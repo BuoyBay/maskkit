@@ -1,0 +1,158 @@
+''' Result coordinates count codepoints; ErrorPosition is -1 for valid input.
+Public Class MaskMatch
+    Private Property mValid As Boolean
+    Private Property mComplete As Boolean
+    Private Property mText As String
+    Private Property mError As Integer
+
+    Public Sub Constructor(valid As Boolean, complete As Boolean, text As String, errorPosition As Integer)
+        mValid = valid
+        mComplete = complete
+        mText = text
+        mError = errorPosition
+    End Sub
+
+    Public Property IsValid As Boolean
+        Get
+            Return mValid
+        End Get
+    End Property
+    Public Property IsComplete As Boolean
+        Get
+            Return mComplete
+        End Get
+    End Property
+    Public Property Text As String
+        Get
+            Return mText
+        End Get
+    End Property
+    Public Property ErrorPosition As Integer
+        Get
+            Return mError
+        End Get
+    End Property
+End Class
+
+Private Class MaskToken
+    Public Property Kind As String
+    Public Property Literal As String
+End Class
+
+Private Function IsMaskSlot(ch As String) As Boolean
+    Return ch = "#" Or String.Compare(ch, "L", True) = 0 Or String.Compare(ch, "l", True) = 0 Or String.Compare(ch, "A", True) = 0 Or ch = "." Or ch = "*"
+End Function
+
+Private Function MaskAccepts(kind As String, ch As String) As Boolean
+    Dim code As Integer = String.Asc(ch)
+    Dim digit As Boolean = code >= 48 And code <= 57
+    Dim letter As Boolean = (code >= 65 And code <= 90) Or (code >= 97 And code <= 122)
+    If kind = "#" Then Return digit
+    If kind = "." Then Return code >= 32 And code <> 127
+    If kind = "*" Then Return digit Or letter
+    Return letter
+End Function
+
+''' Immutable compiled text mask; input/mask limits are 4096 codepoints.
+Public Class TextMask
+    Private Property mTokens As Array Of MaskToken = []
+    Private Property mSlots As Integer = 0
+
+    Public Sub Constructor(pattern As String)
+        If String.LenBytes(pattern) > 16384 Or String.Len(pattern) > 4096 Then Throw New InvalidArgumentException("Mask pattern exceeds limit")
+        Dim chars As Array Of String = String.Chars(pattern)
+        Dim index As Integer = 0
+        While index < Array.Count(chars)
+            Dim ch As String = chars(index)
+            Dim escaped As Boolean = False
+            If ch = "\\" Then
+                index += 1
+                If index = Array.Count(chars) Then Throw New InvalidArgumentException("Trailing mask escape")
+                ch = chars(index)
+                escaped = True
+            End If
+            If String.Asc(ch) < 32 Or String.Asc(ch) = 127 Then Throw New InvalidArgumentException("Control character in mask")
+            Dim token As New MaskToken()
+            If Not escaped And IsMaskSlot(ch) Then
+                token.Kind = ch
+                mSlots += 1
+            Else
+                token.Kind = "literal"
+                token.Literal = ch
+            End If
+            Array.Append(mTokens, token)
+            index += 1
+        End While
+    End Sub
+
+    Public Property SlotCount As Integer
+        Get
+            Return mSlots
+        End Get
+    End Property
+
+    Private Function Evaluate(text As String, raw As Boolean) As MaskMatch
+        If String.LenBytes(text) > 16384 Or String.Len(text) > 4096 Then Throw New InvalidArgumentException("Mask input exceeds limit")
+        Dim chars As Array Of String = String.Chars(text)
+        Dim pieces() As String
+        Dim index As Integer = 0
+        Dim slots As Integer = 0
+        For Each token As MaskToken In mTokens
+            If token.Kind = "literal" And raw Then
+                ' No invented leading/next-field punctuation for an incomplete value.
+                If index = Array.Count(chars) And slots < mSlots Then
+                    Return New MaskMatch(True, False, String.Join(pieces, ""), -1)
+                End If
+                Array.Append(pieces, token.Literal)
+                Continue For
+            End If
+            If index = Array.Count(chars) Then Return New MaskMatch(True, False, String.Join(pieces, ""), -1)
+            Dim ch As String = chars(index)
+            If token.Kind = "literal" Then
+                If String.Compare(ch, token.Literal, True) <> 0 Then Return New MaskMatch(False, False, String.Join(pieces, ""), index)
+                Array.Append(pieces, ch)
+            Else
+                If Not MaskAccepts(token.Kind, ch) Then Return New MaskMatch(False, False, String.Join(pieces, ""), index)
+                If String.Compare(token.Kind, "L", True) = 0 Then ch = String.UCase(ch)
+                If String.Compare(token.Kind, "l", True) = 0 Then ch = String.LCase(ch)
+                Array.Append(pieces, ch)
+                slots += 1
+            End If
+            index += 1
+        Next
+        If index <> Array.Count(chars) Then Return New MaskMatch(False, False, String.Join(pieces, ""), index)
+        Return New MaskMatch(True, True, String.Join(pieces, ""), -1)
+    End Function
+
+    Public Function Match(text As String) As MaskMatch
+        Return Me.Evaluate(text, False)
+    End Function
+
+    Public Function Format(rawInput As String) As MaskMatch
+        Return Me.Evaluate(rawInput, True)
+    End Function
+End Class
+
+''' Prefer first complete match, otherwise first valid partial; stable input order.
+Public Function MatchMasks(masks As Array Of TextMask, text As String, rawInput As Boolean = False) As MaskMatch
+    If Array.Count(masks) = 0 Or Array.Count(masks) > 64 Then Throw New InvalidArgumentException("Provide 1..64 masks")
+    ' Validate the complete list before invoking any matcher.
+    For Each mask As TextMask In masks
+        If mask Is Nil Then Throw New InvalidArgumentException("Mask must not be Nil")
+    Next
+    Dim pendingMatch As MaskMatch
+    Dim failure As MaskMatch
+    For Each mask As TextMask In masks
+        Dim matched As MaskMatch
+        If rawInput Then
+            matched = mask.Format(text)
+        Else
+            matched = mask.Match(text)
+        End If
+        If matched.IsComplete Then Return matched
+        If matched.IsValid And pendingMatch Is Nil Then pendingMatch = matched
+        If failure Is Nil Then failure = matched
+    Next
+    If pendingMatch Is Nil Then Return failure
+    Return pendingMatch
+End Function
