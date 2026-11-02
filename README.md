@@ -1,4 +1,4 @@
-# Partial-match text input masks
+# Text input masks
 
 Compiled text masks for validating pasted values, recognizing partial
 entry and formatting raw slot data. `Import maskkit`. No native dependencies.
