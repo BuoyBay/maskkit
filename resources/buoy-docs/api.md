@@ -68,9 +68,7 @@ most 64 scans. Results do not modify the input or compiled pattern.
 Use this model after receiving committed input or on an explicit Format/Validate
 action. Native selection, deletion, undo, accessibility, caret mapping and IME
 composition need a separate adapter. Rejecting individual KeyDown events is not
-proof of correct paste/IME behavior. The provided console example demonstrates
-full values, partial input and alternative masks without asserting those UI
-guarantees.
+proof of correct paste/IME behavior. Use `Match` for formatted input and `Format` for raw slot data, including partial values and alternative masks.
 
 ## Build and verification
 
@@ -78,10 +76,7 @@ The source package has compiler and BPM manifests. Seal it with
 `buoy pkg seal . -o packages/maskkit-0.1.0.buipkg` using the real
 compiler package command (on this host use `/usr/bin/buoy` for `pkg`).
 
-Maintainers run the private validation suite before release. See the repository README for public build instructions.
-
 See provenance and the
 example.
-
 
 [Typed API](typed-api.md) · [Getting started](getting-started.md)

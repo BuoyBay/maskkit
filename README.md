@@ -1,6 +1,6 @@
 # Compile and apply partial-match text input masks
 
-Pure Buoy compiled text masks for validating pasted values, recognizing partial
+Compiled text masks for validating pasted values, recognizing partial
 entry and formatting raw slot data. `Import maskkit`. No native dependencies.
 
 ## Install
@@ -46,8 +46,6 @@ On your own machine, install Buoy and run:
 ```sh
 buoy ai init --both
 ```
-
-The generated agent files and editor settings stay local and are ignored by Git.
 
 ## Contributing
 
